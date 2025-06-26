@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 try:
     import boto3
     from botocore.exceptions import ClientError, NoCredentialsError
+    from botocore.config import Config
     AWS_AVAILABLE = True
 except ImportError as e:
     logger.error(f"AWS SDK not available: {e}")
@@ -58,12 +59,18 @@ class S3MultipartUpload:
             return
         
         try:
-            # Initialize S3 client
+            # Initialize S3 client with additional config for better reliability
             self.s3_client = boto3.client(
                 's3',
                 region_name=os.getenv("AWS_REGION", "us-east-1"),
                 aws_access_key_id=aws_access_key,
-                aws_secret_access_key=aws_secret_key
+                aws_secret_access_key=aws_secret_key,
+                config=Config(
+                    signature_version='s3v4',
+                    s3={
+                        'addressing_style': 'virtual'
+                    }
+                )
             )
             logger.info("✅ AWS S3 client initialized successfully")
         except Exception as e:
@@ -118,18 +125,14 @@ class S3MultipartUpload:
         try:
             logger.info(f"Generating presigned PUT URL for: {file_name}, type: {file_type}, size: {file_size}")
             
-            # Generate presigned URL for PUT operation
+            # Generate presigned URL for PUT operation - simplified without metadata
+            # This avoids signature mismatch issues with metadata headers
             upload_url = self.s3_client.generate_presigned_url(
                 'put_object',
                 Params={
                     'Bucket': self.bucket,
                     'Key': key,
-                    'ContentType': file_type,
-                    'Metadata': {
-                        'original-name': file_name,
-                        'file-size': str(file_size),
-                        'upload-timestamp': str(timestamp)
-                    }
+                    'ContentType': file_type
                 },
                 ExpiresIn=3600  # 1 hour
             )
